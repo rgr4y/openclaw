@@ -5,7 +5,6 @@ import type { ChannelKind, GatewayReloadPlan } from "./config-reload.js";
 import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
 import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
 import { resolveAgentMaxConcurrent, resolveSubagentMaxConcurrent } from "../config/agent-limits.js";
-import { startGmailWatcher, stopGmailWatcher } from "../hooks/gmail-watcher.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { resetDirectoryCache } from "../infra/outbound/target-resolver.js";
 import {
@@ -89,6 +88,8 @@ export function createGatewayReloadHandlers(params: {
     }
 
     if (plan.restartGmailWatcher) {
+      // Lazy-load gmail-watcher to avoid loading when not needed
+      const { stopGmailWatcher, startGmailWatcher } = await import("../hooks/gmail-watcher.js");
       await stopGmailWatcher().catch(() => {});
       if (!isTruthyEnvValue(process.env.OPENCLAW_SKIP_GMAIL_WATCHER)) {
         try {

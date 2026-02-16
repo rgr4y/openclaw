@@ -8,7 +8,6 @@ import {
   resolveConfiguredModelRef,
   resolveHooksGmailModel,
 } from "../agents/model-selection.js";
-import { startGmailWatcher } from "../hooks/gmail-watcher.js";
 import {
   clearInternalHooks,
   createInternalHookEvent,
@@ -48,8 +47,10 @@ export async function startGatewaySidecars(params: {
   }
 
   // Start Gmail watcher if configured (hooks.gmail.account).
+  // Lazy-load to avoid loading gmail dependencies when not needed.
   if (!isTruthyEnvValue(process.env.OPENCLAW_SKIP_GMAIL_WATCHER)) {
     try {
+      const { startGmailWatcher } = await import("../hooks/gmail-watcher.js");
       const gmailResult = await startGmailWatcher(params.cfg);
       if (gmailResult.started) {
         params.logHooks.info("gmail watcher started");

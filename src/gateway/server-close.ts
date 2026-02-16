@@ -4,7 +4,6 @@ import type { CanvasHostHandler, CanvasHostServer } from "../canvas-host/server.
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
-import { stopGmailWatcher } from "../hooks/gmail-watcher.js";
 
 export function createGatewayCloseHandler(params: {
   bonjourStop: (() => Promise<void>) | null;
@@ -67,6 +66,8 @@ export function createGatewayCloseHandler(params: {
     if (params.pluginServices) {
       await params.pluginServices.stop().catch(() => {});
     }
+    // Lazy-load gmail-watcher to avoid loading when not needed
+    const { stopGmailWatcher } = await import("../hooks/gmail-watcher.js");
     await stopGmailWatcher();
     params.cron.stop();
     params.heartbeatRunner.stop();
