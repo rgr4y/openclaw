@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { listRunningSessions, resetProcessRegistryForTests } from "./bash-process-registry";
-import { createExecTool } from "./bash-tools.exec";
+import { listRunningSessions, resetProcessRegistryForTests } from "./bash-process-registry.js";
+import { createExecTool } from "./bash-tools.exec.js";
 
 const { supervisorSpawnMock } = vi.hoisted(() => ({
   supervisorSpawnMock: vi.fn(),
@@ -26,7 +26,12 @@ test("exec cleans session state when PTY fallback spawn also fails", async () =>
     .mockRejectedValueOnce(new Error("pty spawn failed"))
     .mockRejectedValueOnce(new Error("child fallback failed"));
 
-  const tool = createExecTool({ allowBackground: false });
+  const tool = createExecTool({
+    allowBackground: false,
+    host: "gateway",
+    security: "full",
+    ask: "off",
+  });
 
   await expect(
     tool.execute("toolcall", {

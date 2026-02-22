@@ -42,7 +42,9 @@ function createForwarder(params: {
   const deliver = params.deliver ?? vi.fn().mockResolvedValue([]);
   const forwarder = createExecApprovalForwarder({
     getConfig: () => params.cfg,
-    deliver,
+    deliver: deliver as unknown as NonNullable<
+      NonNullable<Parameters<typeof createExecApprovalForwarder>[0]>["deliver"]
+    >,
     nowMs: () => 1000,
     resolveSessionTarget: params.resolveSessionTarget ?? (() => null),
   });
@@ -111,19 +113,34 @@ describe("exec approval forwarder", () => {
     expect(getFirstDeliveryText(deliver)).toContain("Command:\n```\necho `uname`\necho done\n```");
   });
 
-  it("skips discord forwarding when discord exec approvals target channel", async () => {
+  it("forwards to discord when discord exec approvals handler is disabled", async () => {
     vi.useFakeTimers();
     const cfg = {
       approvals: { exec: { enabled: true, mode: "session" } },
+    } as OpenClawConfig;
+
+    const { deliver, forwarder } = createForwarder({
+      cfg,
+      resolveSessionTarget: () => ({ channel: "discord", to: "channel:123" }),
+    });
+
+    await forwarder.handleRequested(baseRequest);
+
+    expect(deliver).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips discord forwarding when discord exec approvals handler is enabled", async () => {
+    vi.useFakeTimers();
+    const cfg = {
       channels: {
         discord: {
           execApprovals: {
             enabled: true,
-            target: "channel",
             approvers: ["123"],
           },
         },
       },
+      approvals: { exec: { enabled: true, mode: "session" } },
     } as OpenClawConfig;
 
     const { deliver, forwarder } = createForwarder({
@@ -134,6 +151,34 @@ describe("exec approval forwarder", () => {
     await forwarder.handleRequested(baseRequest);
 
     expect(deliver).not.toHaveBeenCalled();
+  });
+
+  it("can forward resolved notices without pending cache when request payload is present", async () => {
+    vi.useFakeTimers();
+    const cfg = {
+      approvals: {
+        exec: {
+          enabled: true,
+          mode: "targets",
+          targets: [{ channel: "telegram", to: "123" }],
+        },
+      },
+    } as OpenClawConfig;
+    const { deliver, forwarder } = createForwarder({ cfg });
+
+    await forwarder.handleResolved({
+      id: "req-missing",
+      decision: "allow-once",
+      resolvedBy: "telegram:123",
+      ts: 2000,
+      request: {
+        command: "echo ok",
+        agentId: "main",
+        sessionKey: "agent:main:main",
+      },
+    });
+
+    expect(deliver).toHaveBeenCalledTimes(1);
   });
 
   it("uses a longer fence when command already contains triple backticks", async () => {
