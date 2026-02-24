@@ -6,7 +6,6 @@ import type {
   Request,
   Response,
 } from "playwright-core";
-import { chromium } from "playwright-core";
 import { formatErrorMessage } from "../infra/errors.js";
 import type { SsrFPolicy } from "../infra/net/ssrf.js";
 import { appendCdpPath, fetchJson, getHeadersWithAuth, withCdpSocket } from "./cdp.helpers.js";
@@ -108,6 +107,15 @@ const MAX_NETWORK_REQUESTS = 500;
 
 let cached: ConnectedBrowser | null = null;
 let connecting: Promise<ConnectedBrowser> | null = null;
+
+/**
+ * Lazy-load playwright-core chromium only when actually needed for browser automation.
+ * This significantly reduces startup time and memory footprint when browser tools aren't used.
+ */
+async function loadChromium() {
+  const { chromium } = await import("playwright-core");
+  return chromium;
+}
 
 function normalizeCdpUrl(raw: string) {
   return raw.replace(/\/$/, "");
@@ -336,6 +344,7 @@ async function connectBrowser(cdpUrl: string): Promise<ConnectedBrowser> {
         const wsUrl = await getChromeWebSocketUrl(normalized, timeout).catch(() => null);
         const endpoint = wsUrl ?? normalized;
         const headers = getHeadersWithAuth(endpoint);
+        const chromium = await loadChromium();
         const browser = await chromium.connectOverCDP(endpoint, { timeout, headers });
         const onDisconnected = () => {
           if (cached?.browser === browser) {

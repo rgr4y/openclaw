@@ -1,6 +1,14 @@
 import type { CDPSession, Page } from "playwright-core";
-import { devices as playwrightDevices } from "playwright-core";
 import { ensurePageState, getPageForTargetId } from "./pw-session.js";
+
+/**
+ * Lazy-load playwright-core devices only when actually needed.
+ * This avoids loading the entire playwright-core module at startup.
+ */
+async function loadPlaywrightDevices(): Promise<Record<string, unknown>> {
+  const { devices } = await import("playwright-core");
+  return devices as Record<string, unknown>;
+}
 
 async function withCdpSession<T>(page: Page, fn: (session: CDPSession) => Promise<T>): Promise<T> {
   const session = await page.context().newCDPSession(page);
@@ -162,7 +170,8 @@ export async function setDeviceViaPlaywright(opts: {
   if (!name) {
     throw new Error("device name is required");
   }
-  const descriptor = (playwrightDevices as Record<string, unknown>)[name] as
+  const playwrightDevices = await loadPlaywrightDevices();
+  const descriptor = playwrightDevices[name] as
     | {
         userAgent?: string;
         viewport?: { width: number; height: number };
