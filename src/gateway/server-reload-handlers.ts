@@ -5,7 +5,6 @@ import { resolveAgentMaxConcurrent, resolveSubagentMaxConcurrent } from "../conf
 import { isRestartEnabled } from "../config/commands.js";
 import type { loadConfig } from "../config/config.js";
 import { startGmailWatcherWithLogs } from "../hooks/gmail-watcher-lifecycle.js";
-import { stopGmailWatcher } from "../hooks/gmail-watcher.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import { resetDirectoryCache } from "../infra/outbound/target-resolver.js";
@@ -91,6 +90,8 @@ export function createGatewayReloadHandlers(params: {
     }
 
     if (plan.restartGmailWatcher) {
+      // Lazy-load gmail-watcher to avoid loading when not needed
+      const { stopGmailWatcher, startGmailWatcher } = await import("../hooks/gmail-watcher.js");
       await stopGmailWatcher().catch(() => {});
       await startGmailWatcherWithLogs({
         cfg: nextConfig,

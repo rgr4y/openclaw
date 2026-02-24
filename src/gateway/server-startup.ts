@@ -10,7 +10,6 @@ import { cleanStaleLockFiles } from "../agents/session-write-lock.js";
 import type { CliDeps } from "../cli/deps.js";
 import type { loadConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
-import { startGmailWatcherWithLogs } from "../hooks/gmail-watcher-lifecycle.js";
 import {
   clearInternalHooks,
   createInternalHookEvent,
@@ -68,6 +67,8 @@ export async function startGatewaySidecars(params: {
   }
 
   // Start Gmail watcher if configured (hooks.gmail.account).
+  // Lazy-load to avoid loading gmail dependencies when not needed.
+  const { startGmailWatcherWithLogs } = await import("../hooks/gmail-watcher-lifecycle.js");
   await startGmailWatcherWithLogs({
     cfg: params.cfg,
     log: params.logHooks,

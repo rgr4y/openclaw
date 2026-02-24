@@ -189,15 +189,21 @@ export async function buildExportSessionReply(params: HandleCommandsParams): Pro
 
   const relativePath = path.relative(params.workspaceDir, outputPath);
   const displayPath = relativePath.startsWith("..") ? outputPath : relativePath;
+  // Attach the file if it's within the workspace dir, which is always within mediaLocalRoots.
+  // For custom paths outside the workspace, fall back to text-only.
+  const isWithinWorkspace = !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
+
+  const summaryText = [
+    "✅ Session exported!",
+    "",
+    `📄 File: ${displayPath}`,
+    `📊 Entries: ${entries.length}`,
+    `🧠 System prompt: ${systemPrompt.length.toLocaleString()} chars`,
+    `🔧 Tools: ${tools.length}`,
+  ].join("\n");
 
   return {
-    text: [
-      "✅ Session exported!",
-      "",
-      `📄 File: ${displayPath}`,
-      `📊 Entries: ${entries.length}`,
-      `🧠 System prompt: ${systemPrompt.length.toLocaleString()} chars`,
-      `🔧 Tools: ${tools.length}`,
-    ].join("\n"),
+    text: summaryText,
+    ...(isWithinWorkspace ? { mediaUrl: `file://${outputPath}` } : {}),
   };
 }
