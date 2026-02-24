@@ -521,15 +521,50 @@ export function resolveSkillsPromptForRun(params: {
   entries?: SkillEntry[];
   config?: OpenClawConfig;
   workspaceDir: string;
+  /**
+   * Per-agent skill allowlist (from agent config `skills: [...]`).
+   * When provided, only skills whose names are in this list will appear in the prompt.
+   * Undefined means unrestricted (all eligible skills shown).
+   * Empty array means no skills shown.
+   */
+  skillFilter?: string[];
 }): string {
   const snapshotPrompt = params.skillsSnapshot?.prompt?.trim();
   if (snapshotPrompt) {
+    // Snapshot was pre-built — use it as-is if no agent filter is needed, or if the
+    // snapshot's own filter already matches (was built for this agent specifically).
+    const snapshotFilter = params.skillsSnapshot?.skillFilter;
+    const agentFilter = params.skillFilter;
+    const filtersMatch =
+      agentFilter === undefined ||
+      (snapshotFilter !== undefined &&
+        snapshotFilter.length === agentFilter.length &&
+        snapshotFilter.every((s, i) => s === agentFilter[i]));
+    if (filtersMatch) {
+      return snapshotPrompt;
+    }
+    // Snapshot exists but was built without this agent's filter — fall through to
+    // re-build from resolved skills if available, else return the snapshot as-is.
+    const resolvedSkills = params.skillsSnapshot?.resolvedSkills;
+    if (resolvedSkills && resolvedSkills.length > 0) {
+      const syntheticEntries: SkillEntry[] = resolvedSkills.map((skill) => ({
+        skill,
+        frontmatter: {},
+      }));
+      const prompt = buildWorkspaceSkillsPrompt(params.workspaceDir, {
+        entries: syntheticEntries,
+        config: params.config,
+        skillFilter: agentFilter,
+      });
+      return prompt.trim() ? prompt : "";
+    }
     return snapshotPrompt;
   }
   if (params.entries && params.entries.length > 0) {
     const prompt = buildWorkspaceSkillsPrompt(params.workspaceDir, {
       entries: params.entries,
       config: params.config,
+      skillFilter: params.skillFilter,
     });
     return prompt.trim() ? prompt : "";
   }
