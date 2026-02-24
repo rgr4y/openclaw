@@ -241,6 +241,8 @@ export function buildAgentSystemPrompt(params: {
   };
   messageToolHints?: string[];
   sandboxInfo?: EmbeddedSandboxInfo;
+  /** Whether gateway restart is enabled (commands.restart, default true). When false, omits restart line from CLI quick reference. */
+  restartEnabled?: boolean;
   /** Reaction guidance for the agent (for Telegram minimal/extensive modes). */
   reactionGuidance?: {
     level: "minimal" | "extensive";
@@ -490,11 +492,11 @@ export function buildAgentSystemPrompt(params: {
       ? [
           "## OpenClaw CLI Quick Reference",
           "OpenClaw is controlled via subcommands. Do not invent commands.",
-          "To manage the Gateway daemon service (start/stop/restart):",
+          `To manage the Gateway daemon service (start/stop${params.restartEnabled !== false ? "/restart" : ""})`,
           "- openclaw gateway status",
           "- openclaw gateway start",
           "- openclaw gateway stop",
-          "- openclaw gateway restart",
+          ...(params.restartEnabled !== false ? ["- openclaw gateway restart"] : []),
           "If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output.",
           "",
         ]
