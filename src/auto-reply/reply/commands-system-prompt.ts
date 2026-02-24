@@ -4,7 +4,9 @@ import { resolveBootstrapContextForRun } from "../../agents/bootstrap-files.js";
 import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import type { EmbeddedContextFile } from "../../agents/pi-embedded-helpers.js";
 import { createOpenClawCodingTools } from "../../agents/pi-tools.js";
+import { filterToolsByPolicy } from "../../agents/pi-tools.policy.js";
 import { resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
+import { resolveSandboxToolPolicyForAgent } from "../../agents/sandbox/tool-policy.js";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
 import { getSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
 import { buildSystemPromptParams } from "../../agents/system-prompt-params.js";
@@ -52,7 +54,7 @@ export async function resolveCommandsSystemPromptBundle(
   });
   const tools = (() => {
     try {
-      return createOpenClawCodingTools({
+      const raw = createOpenClawCodingTools({
         config: params.cfg,
         agentId: params.agentId,
         workspaceDir,
@@ -66,6 +68,14 @@ export async function resolveCommandsSystemPromptBundle(
         modelProvider: params.provider,
         modelId: params.model,
       });
+      // Apply sandbox tool policy filtering to match actual run behavior.
+      // The createOpenClawCodingTools call above omits sandbox (no docker context
+      // available here), so we apply the policy-only layer manually when sandboxed.
+      if (!sandboxRuntime.sandboxed) {
+        return raw;
+      }
+      const sandboxToolPolicy = resolveSandboxToolPolicyForAgent(params.cfg, params.agentId);
+      return filterToolsByPolicy(raw, sandboxToolPolicy);
     } catch {
       return [];
     }
