@@ -579,6 +579,9 @@ export async function runEmbeddedAttempt(
     });
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
     let systemPromptText = systemPromptOverride();
+    if (log.isEnabled("trace")) {
+      log.trace(`system prompt (${systemPromptText.length} chars):\n${systemPromptText}`);
+    }
 
     const sessionLock = await acquireSessionWriteLock({
       sessionFile: params.sessionFile,

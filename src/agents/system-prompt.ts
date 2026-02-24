@@ -168,7 +168,13 @@ function buildVoiceSection(params: { isMinimal: boolean; ttsHint?: string }) {
   return ["## Voice (TTS)", hint, ""];
 }
 
-function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readToolName: string }) {
+function buildDocsSection(params: {
+  docsPath?: string;
+  isMinimal: boolean;
+  readToolName: string;
+  hasReadTool: boolean;
+  hasExecTool: boolean;
+}) {
   const docsPath = params.docsPath?.trim();
   if (!docsPath || params.isMinimal) {
     return [];
@@ -179,9 +185,15 @@ function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readT
     "Mirror: https://docs.openclaw.ai",
     "Source: https://github.com/openclaw/openclaw",
     "Community: https://discord.com/invite/clawd",
-    "Find new skills: https://clawhub.com",
+    // Only suggest skills discovery if the agent can actually use skills (requires read tool).
+    ...(params.hasReadTool ? ["Find new skills: https://clawhub.com"] : []),
     "For OpenClaw behavior, commands, config, or architecture: consult local docs first.",
-    "When diagnosing issues, run `openclaw status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",
+    // Only suggest running openclaw status if exec is available.
+    ...(params.hasExecTool
+      ? [
+          "When diagnosing issues, run `openclaw status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",
+        ]
+      : []),
     "",
   ];
 }
@@ -330,6 +342,13 @@ export function buildAgentSystemPrompt(params: {
   const readToolName = resolveToolName("read");
   const execToolName = resolveToolName("exec");
   const processToolName = resolveToolName("process");
+  // True when the agent has any tool that interacts with the filesystem or shell.
+  // Used to gate workspace/sandbox sections that are irrelevant to tool-less agents.
+  const hasWorkspaceAccess =
+    params.toolNames === undefined ||
+    ["read", "write", "edit", "apply_patch", "exec", "grep", "find", "ls"].some((t) =>
+      availableTools.has(t),
+    );
   const extraSystemPrompt = params.extraSystemPrompt?.trim();
   const ownerDisplay = params.ownerDisplay === "hash" ? "hash" : "raw";
   const ownerLine = buildOwnerIdentityLine(
@@ -399,6 +418,8 @@ export function buildAgentSystemPrompt(params: {
     docsPath: params.docsPath,
     isMinimal,
     readToolName,
+    hasReadTool: availableTools.has("read"),
+    hasExecTool: availableTools.has("exec"),
   });
   const workspaceNotes = (params.workspaceNotes ?? []).map((note) => note.trim()).filter(Boolean);
 
@@ -413,9 +434,10 @@ export function buildAgentSystemPrompt(params: {
     "## Tooling",
     "Tool availability (filtered by policy):",
     "Tool names are case-sensitive. Call tools exactly as listed.",
-    toolLines.length > 0
-      ? toolLines.join("\n")
-      : [
+    // toolNames === undefined means tools are managed externally by pi (legacy path).
+    // toolNames === [] means tools were explicitly resolved but none passed policy — no tools available.
+    params.toolNames === undefined
+      ? [
           "Pi lists the standard tools above. This runtime enables:",
           "- grep: search file contents for patterns",
           "- find: find files by glob pattern",
@@ -432,18 +454,31 @@ export function buildAgentSystemPrompt(params: {
           "- sessions_send: send to another session",
           "- subagents: list/steer/kill sub-agent runs",
           '- session_status: show usage/time/model state and answer "what model are we using?"',
-        ].join("\n"),
-    "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
-    `For long waits, avoid rapid poll loops: use ${execToolName} with enough yieldMs or ${processToolName}(action=poll, timeout=<ms>).`,
-    "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done.",
-    "Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",
+        ].join("\n")
+      : toolLines.length > 0
+        ? toolLines.join("\n")
+        : "No tools are available to you in this session.",
+    // Only show tool-specific guidance when tools are actually available.
+    ...(params.toolNames === undefined || toolLines.length > 0
+      ? [
+          "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
+          `For long waits, avoid rapid poll loops: use ${execToolName} with enough yieldMs or ${processToolName}(action=poll, timeout=<ms>).`,
+          "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done.",
+          "Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",
+        ]
+      : []),
     "",
-    "## Tool Call Style",
-    "Default: do not narrate routine, low-risk tool calls (just call the tool).",
-    "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
-    "Keep narration brief and value-dense; avoid repeating obvious steps.",
-    "Use plain human language for narration unless in a technical context.",
-    "",
+    // Only show tool call style guidance when there are tools to call.
+    ...(params.toolNames === undefined || toolLines.length > 0
+      ? [
+          "## Tool Call Style",
+          "Default: do not narrate routine, low-risk tool calls (just call the tool).",
+          "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
+          "Keep narration brief and value-dense; avoid repeating obvious steps.",
+          "Use plain human language for narration unless in a technical context.",
+          "",
+        ]
+      : []),
     ...safetySection,
     // Only show gateway CLI reference when the agent actually has the gateway tool
     ...(hasGateway && !isMinimal
@@ -486,60 +521,65 @@ export function buildAgentSystemPrompt(params: {
       ? params.modelAliasLines.join("\n")
       : "",
     params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal ? "" : "",
-    userTimezone
+    userTimezone && availableTools.has("session_status")
       ? "If you need the current date, time, or day of week, run session_status (📊 session_status)."
       : "",
-    "## Workspace",
-    `Your working directory is: ${displayWorkspaceDir}`,
-    workspaceGuidance,
-    ...workspaceNotes,
-    "",
-    ...docsSection,
-    params.sandboxInfo?.enabled ? "## Sandbox" : "",
-    params.sandboxInfo?.enabled
+    // Only show workspace and sandbox sections when the agent has tools to interact with the filesystem/shell.
+    ...(hasWorkspaceAccess
       ? [
-          "You are running in a sandboxed runtime (tools execute in Docker).",
-          "Some tools may be unavailable due to sandbox policy.",
-          "Sub-agents stay sandboxed (no elevated/host access). Need outside-sandbox read/write? Don't spawn; ask first.",
-          params.sandboxInfo.containerWorkspaceDir
-            ? `Sandbox container workdir: ${sanitizeForPromptLiteral(params.sandboxInfo.containerWorkspaceDir)}`
+          "## Workspace",
+          `Your working directory is: ${displayWorkspaceDir}`,
+          workspaceGuidance,
+          ...workspaceNotes,
+          "",
+          ...docsSection,
+          params.sandboxInfo?.enabled ? "## Sandbox" : "",
+          params.sandboxInfo?.enabled
+            ? [
+                "You are running in a sandboxed runtime (tools execute in Docker).",
+                "Some tools may be unavailable due to sandbox policy.",
+                "Sub-agents stay sandboxed (no elevated/host access). Need outside-sandbox read/write? Don't spawn; ask first.",
+                params.sandboxInfo.containerWorkspaceDir
+                  ? `Sandbox container workdir: ${sanitizeForPromptLiteral(params.sandboxInfo.containerWorkspaceDir)}`
+                  : "",
+                params.sandboxInfo.workspaceDir
+                  ? `Sandbox host mount source (file tools bridge only; not valid inside sandbox exec): ${sanitizeForPromptLiteral(params.sandboxInfo.workspaceDir)}`
+                  : "",
+                params.sandboxInfo.workspaceAccess
+                  ? `Agent workspace access: ${params.sandboxInfo.workspaceAccess}${
+                      params.sandboxInfo.agentWorkspaceMount
+                        ? ` (mounted at ${sanitizeForPromptLiteral(params.sandboxInfo.agentWorkspaceMount)})`
+                        : ""
+                    }`
+                  : "",
+                params.sandboxInfo.browserBridgeUrl ? "Sandbox browser: enabled." : "",
+                params.sandboxInfo.browserNoVncUrl
+                  ? `Sandbox browser observer (noVNC): ${sanitizeForPromptLiteral(params.sandboxInfo.browserNoVncUrl)}`
+                  : "",
+                params.sandboxInfo.hostBrowserAllowed === true
+                  ? "Host browser control: allowed."
+                  : params.sandboxInfo.hostBrowserAllowed === false
+                    ? "Host browser control: blocked."
+                    : "",
+                params.sandboxInfo.elevated?.allowed
+                  ? "Elevated exec is available for this session."
+                  : "",
+                params.sandboxInfo.elevated?.allowed
+                  ? "User can toggle with /elevated on|off|ask|full."
+                  : "",
+                params.sandboxInfo.elevated?.allowed
+                  ? "You may also send /elevated on|off|ask|full when needed."
+                  : "",
+                params.sandboxInfo.elevated?.allowed
+                  ? `Current elevated level: ${params.sandboxInfo.elevated.defaultLevel} (ask runs exec on host with approvals; full auto-approves).`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join("\n")
             : "",
-          params.sandboxInfo.workspaceDir
-            ? `Sandbox host mount source (file tools bridge only; not valid inside sandbox exec): ${sanitizeForPromptLiteral(params.sandboxInfo.workspaceDir)}`
-            : "",
-          params.sandboxInfo.workspaceAccess
-            ? `Agent workspace access: ${params.sandboxInfo.workspaceAccess}${
-                params.sandboxInfo.agentWorkspaceMount
-                  ? ` (mounted at ${sanitizeForPromptLiteral(params.sandboxInfo.agentWorkspaceMount)})`
-                  : ""
-              }`
-            : "",
-          params.sandboxInfo.browserBridgeUrl ? "Sandbox browser: enabled." : "",
-          params.sandboxInfo.browserNoVncUrl
-            ? `Sandbox browser observer (noVNC): ${sanitizeForPromptLiteral(params.sandboxInfo.browserNoVncUrl)}`
-            : "",
-          params.sandboxInfo.hostBrowserAllowed === true
-            ? "Host browser control: allowed."
-            : params.sandboxInfo.hostBrowserAllowed === false
-              ? "Host browser control: blocked."
-              : "",
-          params.sandboxInfo.elevated?.allowed
-            ? "Elevated exec is available for this session."
-            : "",
-          params.sandboxInfo.elevated?.allowed
-            ? "User can toggle with /elevated on|off|ask|full."
-            : "",
-          params.sandboxInfo.elevated?.allowed
-            ? "You may also send /elevated on|off|ask|full when needed."
-            : "",
-          params.sandboxInfo.elevated?.allowed
-            ? `Current elevated level: ${params.sandboxInfo.elevated.defaultLevel} (ask runs exec on host with approvals; full auto-approves).`
-            : "",
+          params.sandboxInfo?.enabled ? "" : "",
         ]
-          .filter(Boolean)
-          .join("\n")
-      : "",
-    params.sandboxInfo?.enabled ? "" : "",
+      : [...docsSection]),
     ...buildUserIdentitySection(ownerLine, isMinimal),
     ...buildTimeSection({
       userTimezone,
