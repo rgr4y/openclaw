@@ -93,11 +93,16 @@ function buildOwnerIdentityLine(
   return `Authorized senders: ${displayOwnerNumbers.join(", ")}. These senders are allowlisted; do not assume they are the owner.`;
 }
 
-function buildTimeSection(params: { userTimezone?: string }) {
+function buildTimeSection(params: { userTimezone?: string; userTime?: string }) {
   if (!params.userTimezone) {
     return [];
   }
-  return ["## Current Date & Time", `Time zone: ${params.userTimezone}`, ""];
+  const lines = ["## Current Date & Time"];
+  if (params.userTime) {
+    lines.push(params.userTime);
+  }
+  lines.push(`Time zone: ${params.userTimezone}`, "");
+  return lines;
 }
 
 function buildReplyTagsSection(isMinimal: boolean) {
@@ -139,10 +144,10 @@ function buildMessagingSection(params: {
       ? [
           "",
           "### message tool",
-          "- Use `message` for proactive sends + channel actions (polls, reactions, etc.).",
+          "- Use `message` for proactive sends to other sessions/users and channel actions (polls, reactions, edits, etc.).",
+          "- Do NOT use `message` to deliver your reply in the current conversation — just output text; OpenClaw routes it automatically.",
           "- For `action=send`, include `to` and `message`.",
           `- If multiple channels are configured, pass \`channel\` (${params.messageChannelOptions}).`,
-          `- If you use \`message\` (\`action=send\`) to deliver your user-visible reply, respond with ONLY: ${SILENT_REPLY_TOKEN} (avoid duplicate replies).`,
           params.inlineButtonsEnabled
             ? "- Inline buttons supported. Use `action=send` with `buttons=[[{text,callback_data,style?}]]`; `style` can be `primary`, `success`, or `danger`."
             : params.runtimeChannel
@@ -521,9 +526,6 @@ export function buildAgentSystemPrompt(params: {
       ? params.modelAliasLines.join("\n")
       : "",
     params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal ? "" : "",
-    userTimezone && availableTools.has("session_status")
-      ? "If you need the current date, time, or day of week, run session_status (📊 session_status)."
-      : "",
     // Only show workspace and sandbox sections when the agent has tools to interact with the filesystem/shell.
     ...(hasWorkspaceAccess
       ? [
@@ -583,6 +585,7 @@ export function buildAgentSystemPrompt(params: {
     ...buildUserIdentitySection(ownerLine, isMinimal),
     ...buildTimeSection({
       userTimezone,
+      userTime: params.userTime,
     }),
     "## Workspace Files (injected)",
     "These user-editable files are loaded by OpenClaw and included below in Project Context.",
