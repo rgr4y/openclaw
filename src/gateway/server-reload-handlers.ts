@@ -91,7 +91,8 @@ export function createGatewayReloadHandlers(params: {
 
     if (plan.restartGmailWatcher) {
       // Lazy-load gmail-watcher to avoid loading when not needed
-      const { stopGmailWatcher, startGmailWatcher } = await import("../hooks/gmail-watcher.js");
+      const { stopGmailWatcher, startGmailWatcher: _startGmailWatcher } =
+        await import("../hooks/gmail-watcher.js");
       await stopGmailWatcher().catch(() => {});
       await startGmailWatcherWithLogs({
         cfg: nextConfig,
