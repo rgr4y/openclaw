@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim@sha256:98f4b71de414932439ac6ac690d7060df1f27161073c5036a7553723881bffbe
+FROM node:24-trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -16,6 +16,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 RUN useradd --create-home --shell /bin/bash sandbox
 USER sandbox
-WORKDIR /home/sandbox
+WORKDIR /workspace
 
+RUN node -v; \
+    npm -v; \
+    python3 -V; \
+    uname -a
+    
 CMD ["tail", "-f", "/dev/null"]
