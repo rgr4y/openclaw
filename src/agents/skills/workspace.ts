@@ -625,6 +625,7 @@ export async function syncSkillsToWorkspace(params: {
   sourceWorkspaceDir: string;
   targetWorkspaceDir: string;
   config?: OpenClawConfig;
+  skillFilter?: string[];
   managedSkillsDir?: string;
   bundledSkillsDir?: string;
 }) {
@@ -637,7 +638,7 @@ export async function syncSkillsToWorkspace(params: {
   await serializeByKey(`syncSkills:${targetDir}`, async () => {
     const targetSkillsDir = path.join(targetDir, "skills");
 
-    const entries = loadSkillEntries(sourceDir, {
+    const rawEntries = loadSkillEntries(sourceDir, {
       config: params.config,
       managedSkillsDir: params.managedSkillsDir,
       bundledSkillsDir: params.bundledSkillsDir,
@@ -646,6 +647,7 @@ export async function syncSkillsToWorkspace(params: {
     await fsp.rm(targetSkillsDir, { recursive: true, force: true });
     await fsp.mkdir(targetSkillsDir, { recursive: true });
 
+    const entries = filterSkillEntries(rawEntries, params.config, params.skillFilter);
     const usedDirNames = new Set<string>();
     for (const entry of entries) {
       let dest: string | null = null;

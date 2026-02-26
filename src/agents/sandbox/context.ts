@@ -5,6 +5,7 @@ import type { OpenClawConfig } from "../../config/config.js";
 import { loadConfig } from "../../config/config.js";
 import { defaultRuntime } from "../../runtime.js";
 import { resolveUserPath } from "../../utils.js";
+import { resolveAgentSkillsFilter } from "../agent-scope.js";
 import { syncSkillsToWorkspace } from "../skills.js";
 import { DEFAULT_AGENT_WORKSPACE_DIR } from "../workspace.js";
 import { ensureSandboxBrowser } from "./browser.js";
@@ -21,6 +22,7 @@ async function ensureSandboxWorkspaceLayout(params: {
   cfg: ReturnType<typeof resolveSandboxConfigForAgent>;
   rawSessionKey: string;
   config?: OpenClawConfig;
+  skillFilter?: string[];
   workspaceDir?: string;
 }): Promise<{
   agentWorkspaceDir: string;
@@ -50,6 +52,7 @@ async function ensureSandboxWorkspaceLayout(params: {
         await syncSkillsToWorkspace({
           sourceWorkspaceDir: agentWorkspaceDir,
           targetWorkspaceDir: sandboxWorkspaceDir,
+          skillFilter: params.skillFilter,
           config: params.config,
         });
       } catch (error) {
@@ -119,6 +122,9 @@ export async function resolveSandboxContext(params: {
   await maybePruneSandboxes(cfg);
 
   const { agentWorkspaceDir, scopeKey, workspaceDir } = await ensureSandboxWorkspaceLayout({
+    skillFilter: params.config
+      ? resolveAgentSkillsFilter(params.config, resolved.runtime.agentId)
+      : undefined,
     cfg,
     rawSessionKey,
     config: params.config,
