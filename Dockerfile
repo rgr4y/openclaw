@@ -55,6 +55,11 @@ ENV OPENCLAW_PREFER_PNPM=1
 RUN --mount=type=cache,target=/home/node/.local/share/pnpm/store,uid=1000,gid=1000 \
     pnpm ui:build
 
+# Expose the CLI binary without requiring npm global writes as non-root.
+USER root
+RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
+ && chmod 755 /app/openclaw.mjs
+
 ENV NODE_ENV=production
 
 # Security hardening: Run as non-root user
